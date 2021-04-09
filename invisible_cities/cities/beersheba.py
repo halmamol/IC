@@ -57,7 +57,7 @@ from .. evm.event_model        import HitEnergy
 from .. types.ic_types         import AutoNameEnumBase
 
 from .. core                   import system_of_units as units
-
+from scipy.spatial import distance
 
 class CutType          (AutoNameEnumBase):
     abs = auto()
@@ -163,25 +163,29 @@ def deconvolve_signal(det_db          : pd.DataFrame,
 
         return create_deconvolution_df(df, deconv_image.flatten(), pos, cut_type, e_cut, n_dim)
 
-    def apply_deconvolution(df):
+    def apply_deconvolution(df, df_high):
         '''
         Given an event cdst, it iterates through its S2s and applies deconvolution
         to each S2.
 
         Parameters
         ----------
-        df : Original input dataframe for the deconvolution (event cdst)
+        df      : Original input dataframe for the deconvolution (event cdst,  low th)
+        df_high : Original input dataframe for the energy        (event cdst, high th)
 
         Returns
         ----------
         Dataframe with the deconvolved event.
         '''
+        if len(df_high)==0:
+            return df_high
+
         deco_dst = []
         df.loc[:, "NormQ"] = np.nan
         for peak, hits in df.groupby("npeak"):
             hits.loc[:, "NormQ"] = hits.loc[:, 'Q'] / hits.loc[:, 'Q'].sum()
             deconvolved_hits = pd.concat([deconvolve_hits(df_z, z) for z, df_z in hits.groupby("Z")], ignore_index=True)
-            distribute_energy(deconvolved_hits, hits, energy_type)
+            distribute_energy(deconvolved_hits, hits, df_high[df_high.npeak==peak], energy_type)
             deco_dst.append(deconvolved_hits)
 
         return pd.concat(deco_dst, ignore_index=True)
@@ -227,7 +231,7 @@ def create_deconvolution_df(hits, deconv_e, pos, cut_type, e_cut, n_dim):
     return df
 
 
-def distribute_energy(df, cdst, energy_type):
+def distribute_energy(df, cdst, cdst_high, energy_type):
     '''
     Assign the energy of a dataframe (cdst) to another dataframe (deconvolved),
     distributing it according to the charge fraction of each deconvolution hit.
@@ -238,7 +242,18 @@ def distribute_energy(df, cdst, energy_type):
     cdst        : Dataframe with the sensor response (usually a cdst)
     energy_type : HitEnergy with which 'type' of energy should be assigned.
     '''
-    df.loc[:, 'E'] = df.E / df.E.sum() * cdst.loc[:, energy_type.value].sum()
+    dataset = cdst_high if len(cdst_high)>0 else cdst
+    if not dataset.Ec.sum()>0:
+        df.loc[:, 'E'] = 0
+        return
+    sel_nan = np.isnan(dataset.loc[:, energy_type.value])
+    nan_dst = dataset[sel_nan]
+    good_dst= dataset[~sel_nan]
+    good_dst['corrF'] = good_dst.Ec/good_dst.E
+    index = np.argmin(distance.cdist(nan_dst.loc[:, ['X', 'Y']].values, good_dst.loc[:, ['X', 'Y']].values, 'euclidean'), axis=1)
+
+    dataset.loc[sel_nan, energy_type.value] = nan_dst.E.values * good_dst.corrF.values[index]
+    df.loc[:, 'E'] = df.E / df.E.sum() * dataset.loc[:, energy_type.value].sum()
 
 
 def cut_over_Q(q_cut, redist_var):
@@ -405,7 +420,7 @@ def beersheba(files_in, file_out, compression, event_range, print_mod, detector_
                                    args = 'cdst',
                                    out  = 'cdst_passed_no_hits')
     deconvolve_events     = fl.map(deconvolve_signal(DataSiPM(detector_db, run_number), **deconv_params),
-                                   args = 'cdst',
+                                   args = ('cdst', 'cdst_high'),
                                    out  = 'deconv_dst')
 
     event_count_in        = fl.spy_count()

@@ -125,7 +125,7 @@ def create_timestamp(rate: float) -> float:
 
     Returns
     -------
-    Function to calculate timestamp for the given rate with 
+    Function to calculate timestamp for the given rate with
     event_number as parameter.
     """
 
@@ -142,12 +142,12 @@ def create_timestamp(rate: float) -> float:
     def create_timestamp_(event_number: Union[int, float]) -> float:
         """
         Calculates timestamp for a given Event Number and Rate.
-    
+
         Parameters
         ----------
         event_number : Union[int, float]
                        ID value of the current event.
-    
+
         Returns
         -------
         Calculated timestamp : float
@@ -495,8 +495,9 @@ def cdst_from_files(paths: List[str]) -> Iterator[Dict[str,Union[pd.DataFrame, M
        pandas DataFrame with kdst info, mc_info, run_number, event_number and timestamp"""
     for path in paths:
         try:
-            cdst_df    = load_dst (path,   'CHITS', 'lowTh')
-            summary_df = load_dst (path, 'Summary', 'Events')
+            cdst_df      = load_dst (path,   'CHITS', 'lowTh')
+            cdst_df_high = load_dst (path,   'CHITS', 'highTh')
+            summary_df   = load_dst (path, 'Summary', 'Events')
         except tb.exceptions.NoSuchNodeError:
             continue
 
@@ -505,15 +506,20 @@ def cdst_from_files(paths: List[str]) -> Iterator[Dict[str,Union[pd.DataFrame, M
                 run_number  = get_run_number(h5in)
                 event_info  = get_event_info(h5in)
                 evts, _     = zip(*event_info[:])
-                bool_mask   = np.in1d(evts, cdst_df.event.unique())
-                event_info  = event_info[bool_mask]
+                bool_mask      = np.in1d(evts, cdst_df.event.unique())
+                bool_mask_high = np.in1d(evts, cdst_df_high.event.unique())
+                #print(bool_mask_high)
+                #print(bool_mask)
+                bool_mask_all  = bool_mask & bool_mask_high
+                event_info  = event_info[bool_mask_all]
             except (tb.exceptions.NoSuchNodeError, IndexError):
                 continue
-            check_lengths(event_info, cdst_df.event.unique())
+            #check_lengths(event_info, cdst_df[bool_mask_all].event.unique())
             for evtinfo in event_info:
                 event_number, timestamp = evtinfo
-                yield dict(cdst    = cdst_df   .loc[cdst_df   .event==event_number],
-                           summary = summary_df.loc[summary_df.event==event_number],
+                yield dict(cdst      = cdst_df     .loc[cdst_df     .event==event_number],
+                           cdst_high = cdst_df_high.loc[cdst_df_high.event==event_number],
+                           summary   = summary_df  .loc[summary_df  .event==event_number],
                            run_number=run_number,
                            event_number=event_number, timestamp=timestamp)
             # NB, the monte_carlo writer is different from the others:
