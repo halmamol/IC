@@ -58,7 +58,14 @@ def count_masked(cs, d, datasipm, is_masked):
     return np.count_nonzero(~is_masked.astype(bool)[indices])
 
 
-def corona(pos, qs, all_sipms,
+# def corona(pos, qs, all_sipms,
+#            Qthr            =  0 * units.pes,
+#            Qlm             =  5 * units.pes,
+#            lm_radius       =  0 * units.mm,
+#            new_lm_radius   = 15 * units.mm,
+#            msipm           =  3,
+#            consider_masked = False):
+def corona(pos, qs,
            Qthr            =  0 * units.pes,
            Qlm             =  5 * units.pes,
            lm_radius       =  0 * units.mm,
@@ -141,7 +148,7 @@ def corona(pos, qs, all_sipms,
     if not len(pos)   : raise SipmEmptyList
     if np.sum(qs) == 0: raise SipmZeroCharge
 
-    masked = all_sipms.Active.values.astype(bool) if consider_masked else None
+    # masked = all_sipms.Active.values.astype(bool) if consider_masked else None
 
     above_threshold = np.where(qs >= Qthr)[0]            # Find SiPMs with qs at least Qthr
     pos, qs = pos[above_threshold], qs[above_threshold]  # Discard SiPMs with qs less than Qthr
@@ -166,7 +173,9 @@ def corona(pos, qs, all_sipms,
 
         # find the SiPMs within new_lm_radius of the new local maximum of charge
         within_new_lm_radius = get_nearby_sipm_inds(new_local_maximum, new_lm_radius, pos      )
-        n_masked_neighbours  = count_masked        (new_local_maximum, new_lm_radius, all_sipms, masked)
+        # n_masked_neighbours  = count_masked        (new_local_maximum, new_lm_radius, all_sipms, masked)
+        n_masked_neighbours  = 0
+
 
         # if there are at least msipms within_new_lm_radius, taking
         # into account any masked channel, get the barycenter
